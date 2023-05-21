@@ -1,14 +1,16 @@
 import discord
 from discord import Message as DiscordMessage
+from discord.ext import tasks
 import logging
 from src.base import Message, Conversation
 from src.constants import (
     BOT_INVITE_URL,
     DISCORD_BOT_TOKEN,
-    EXAMPLE_CONVOS,
+    # EXAMPLE_CONVOS,
     ACTIVATE_THREAD_PREFX,
     MAX_THREAD_MESSAGES,
     SECONDS_DELAY_RECEIVING_MSG,
+    OPENAI_API_KEY
 )
 import asyncio
 from src.utils import (
@@ -29,27 +31,17 @@ from src.moderation import (
 logging.basicConfig(
     format="[%(asctime)s] [%(filename)s:%(lineno)d] %(message)s", level=logging.INFO
 )
-
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
-
+token_usage = 0
 @client.event
 async def on_ready():
     logger.info(f"We have logged in as {client.user}. Invite URL: {BOT_INVITE_URL}")
     completion.MY_BOT_NAME = client.user.name
-    completion.MY_BOT_EXAMPLE_CONVOS = []
-    for c in EXAMPLE_CONVOS:
-        messages = []
-        for m in c.messages:
-            if m.user == "Lenard":
-                messages.append(Message(user=client.user.name, text=m.text))
-            else:
-                messages.append(m)
-        completion.MY_BOT_EXAMPLE_CONVOS.append(Conversation(messages=messages))
     await tree.sync()
 
 
@@ -130,6 +122,10 @@ async def chat_command(int: discord.Interaction, message: str):
             response_data = await generate_completion_response(
                 messages=messages, user=user
             )
+            if response_data.tokens!= None:
+                token_usage_changed(response_data.tokens)
+            else:
+                print("response_data.tokens!= Nones")
             # send the result
             await process_response(
                 user=user, thread=thread, response_data=response_data
@@ -263,5 +259,21 @@ async def on_message(message: DiscordMessage):
     except Exception as e:
         logger.exception(e)
 
+from src.arxiv2discord.interface import ArxivInterface 
+arxiv_interface = ArxivInterface()
+@tasks.loop(hours=2)
+async def send_paper_summary():
+    token_used = await arxiv_interface.run()
+    await token_usage_changed(token_used)
 
+@tree.command(name="startpaper", description=" Start sending summary of latest papers in this channel")
+async def startpaper_command(int: discord.Interaction):
+    arxiv_interface.set_channel(int.channel)
+    send_paper_summary.start()
+
+async def token_usage_changed(token_used):
+    token_usage += token_used
+    cost = token_usage/1000*0.002
+    username = "GPT-chan [%.3f/10.0$]" %(cost)
+    await client.user.edit(nick=username)
 client.run(DISCORD_BOT_TOKEN)

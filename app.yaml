@@ -1,0 +1,11 @@
+runtime: python310
+entrypoint: gunicorn -b :$PORT src.dummy_server:app & python -m src.main.py 
+instance_class: F1
+automatic_scaling:
+ min_instances: 1
+
+inbound_services:
+   - warmup
+
+includes:
+  - env_variables.yaml

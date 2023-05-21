@@ -5,7 +5,7 @@ import yaml
 from typing import Dict, List
 from src.base import Config
 
-load_dotenv()
+load_dotenv(verbose=True)
 
 
 # load config.yaml
@@ -16,7 +16,7 @@ CONFIG: Config = dacite.from_dict(
 
 BOT_NAME = CONFIG.name
 BOT_INSTRUCTIONS = CONFIG.instructions
-EXAMPLE_CONVOS = CONFIG.example_conversations
+# EXAMPLE_CONVOS = CONFIG.example_conversations
 
 DISCORD_BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 DISCORD_CLIENT_ID = os.environ["DISCORD_CLIENT_ID"]

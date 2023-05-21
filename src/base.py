@@ -34,7 +34,7 @@ class Conversation:
 class Config:
     name: str
     instructions: str
-    example_conversations: List[Conversation]
+    # example_conversations: List[Conversation]
 
 
 @dataclass(frozen=True)
