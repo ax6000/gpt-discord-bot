@@ -1,5 +1,5 @@
 runtime: python310
-entrypoint: gunicorn -b :$PORT src.dummy_server:app & python -m src.main.py 
+entrypoint: gunicorn -b :$PORT src.dummy_server:app & exec python -m src.main
 instance_class: F1
 automatic_scaling:
  min_instances: 1

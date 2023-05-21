@@ -61,7 +61,6 @@ async def generate_completion_response(
         for i in messages:
             tmp = {"role":"user","content":i.text}
             prompt.append(tmp)
-        print(prompt)
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=prompt,
@@ -69,9 +68,10 @@ async def generate_completion_response(
             top_p=0.9,
             max_tokens=512
         )
+        # print(response)
         reply = response['choices'][0]['message']['content']
-        tokens = response['usage']['total_tokens']
-
+        tokens = response['usage']['total_tokens'] if 'total_tokens' in response['usage'] else None
+        print("tokens: "+str(tokens))
         # if reply:
         #     flagged_str, blocked_str = moderate_message(
         #         message=(rendered + reply)[-500:], user=user
@@ -96,7 +96,7 @@ async def generate_completion_response(
     except openai.error.InvalidRequestError as e:
         if "This model's maximum context length" in e.user_message:
             return CompletionData(
-                status=CompletionResult.TOO_LONG, reply_text=None, status_text=str(e)
+                status=CompletionResult.TOO_LONG, reply_text=None, status_text=str(e),tokens=tokens
             )
         else:
             logger.exception(e)
@@ -104,11 +104,12 @@ async def generate_completion_response(
                 status=CompletionResult.INVALID_REQUEST,
                 reply_text=None,
                 status_text=str(e),
+                tokens=tokens
             )
     except Exception as e:
         logger.exception(e)
         return CompletionData(
-            status=CompletionResult.OTHER_ERROR, reply_text=None, status_text=str(e)
+            status=CompletionResult.OTHER_ERROR, reply_text=None, status_text=str(e),tokens=tokens
         )
 
 

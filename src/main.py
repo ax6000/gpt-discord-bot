@@ -2,6 +2,7 @@ import discord
 from discord import Message as DiscordMessage
 from discord.ext import tasks
 import logging
+import subprocess
 from src.base import Message, Conversation
 from src.constants import (
     BOT_INVITE_URL,
@@ -10,7 +11,8 @@ from src.constants import (
     ACTIVATE_THREAD_PREFX,
     MAX_THREAD_MESSAGES,
     SECONDS_DELAY_RECEIVING_MSG,
-    OPENAI_API_KEY
+    OPENAI_API_KEY,
+    ALLOWED_SERVER_IDS
 )
 import asyncio
 from src.utils import (
@@ -38,12 +40,20 @@ client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
 token_usage = 0
+
+from src.arxiv2discord.interface import ArxivInterface 
+arxiv_interface = ArxivInterface()
+
+
+# commands =["gunicorn","-b",":$PORT","src.dummy_server:app"]
+# subprocess.Popen(commands,shell=False)
+
 @client.event
 async def on_ready():
     logger.info(f"We have logged in as {client.user}. Invite URL: {BOT_INVITE_URL}")
     completion.MY_BOT_NAME = client.user.name
+    # client.loop.create_task(get_token_count())
     await tree.sync()
-
 
 # /chat message:
 @tree.command(name="chat", description="Create a new thread for conversation")
@@ -64,52 +74,52 @@ async def chat_command(int: discord.Interaction, message: str):
 
         user = int.user
         logger.info(f"Chat command by {user} {message[:20]}")
-        # try:
-        #     # moderate the message
-        #     flagged_str, blocked_str = moderate_message(message=message, user=user)
-        #     await send_moderation_blocked_message(
-        #         guild=int.guild,
-        #         user=user,
-        #         blocked_str=blocked_str,
-        #         message=message,
-        #     )
-        #     if len(blocked_str) > 0:
-        #         # message was blocked
-        #         await int.response.send_message(
-        #             f"Your prompt has been blocked by moderation.\n{message}",
-        #             ephemeral=True,
-        #         )
-        #         return
+        try:
+            # moderate the message
+            # flagged_str, blocked_str = moderate_message(message=message, user=user)
+            # await send_moderation_blocked_message(
+            #     guild=int.guild,
+            #     user=user,
+            #     blocked_str=blocked_str,
+            #     message=message,
+            # )
+            # if len(blocked_str) > 0:
+            #     # message was blocked
+            #     await int.response.send_message(
+            #         f"Your prompt has been blocked by moderation.\n{message}",
+            #         ephemeral=True,
+            #     )
+            #     return
 
-        #     embed = discord.Embed(
-        #         description=f"<@{user.id}> wants to chat! 🤖💬",
-        #         color=discord.Color.green(),
-        #     )
-        #     embed.add_field(name=user.name, value=message)
+            embed = discord.Embed(
+                description=f"<@{user.id}> wants to chat! 🤖💬",
+                color=discord.Color.green(),
+            )
+            embed.add_field(name=user.name, value=message)
 
-        #     if len(flagged_str) > 0:
-        #         # message was flagged
-        #         embed.color = discord.Color.yellow()
-        #         embed.title = "⚠️ This prompt was flagged by moderation."
+            # if len(flagged_str) > 0:
+            #     # message was flagged
+            #     embed.color = discord.Color.yellow()
+            #     embed.title = "⚠️ This prompt was flagged by moderation."
 
-        #     await int.response.send_message(embed=embed)
-    #        response = await int.original_response()
+            await int.response.send_message(embed=embed)
+            response = await int.original_response()
 
-        #     await send_moderation_flagged_message(
-        #         guild=int.guild,
-        #         user=user,
-        #         flagged_str=flagged_str,
-        #         message=message,
-        #         url=response.jump_url,
-        #     )
-        # except Exception as e:
-        #     logger.exception(e)
-        #     await int.response.send_message(
-        #         f"Failed to start chat {str(e)}", ephemeral=True
-        #     )
-        #     return
+            await send_moderation_flagged_message(
+                guild=int.guild,
+                user=user,
+                flagged_str=flagged_str,
+                message=message,
+                url=response.jump_url,
+            )
+        except Exception as e:
+            logger.exception(e)
+            await int.response.send_message(
+                f"Failed to start chat {str(e)}", ephemeral=True
+            )
+            return
 
-        response = await int.original_response()
+        # response = await int.original_response()
         # create the thread
         thread = await response.create_thread(
             name=f"{ACTIVATE_THREAD_PREFX} {user.name[:20]} - {message[:30]}",
@@ -123,8 +133,9 @@ async def chat_command(int: discord.Interaction, message: str):
             response_data = await generate_completion_response(
                 messages=messages, user=user
             )
-            if response_data.tokens!= None:
-                token_usage_changed(response_data.tokens)
+            print(response_data)
+            if response_data.tokens != None:
+                await token_usage_changed(response_data.tokens)
             else:
                 print("response_data.tokens!= Nones")
             # send the result
@@ -175,47 +186,47 @@ async def on_message(message: DiscordMessage):
             return
 
         # moderate the message
-        flagged_str, blocked_str = moderate_message(
-            message=message.content, user=message.author
-        )
-        await send_moderation_blocked_message(
-            guild=message.guild,
-            user=message.author,
-            blocked_str=blocked_str,
-            message=message.content,
-        )
-        if len(blocked_str) > 0:
-            try:
-                await message.delete()
-                await thread.send(
-                    embed=discord.Embed(
-                        description=f"❌ **{message.author}'s message has been deleted by moderation.**",
-                        color=discord.Color.red(),
-                    )
-                )
-                return
-            except Exception as e:
-                await thread.send(
-                    embed=discord.Embed(
-                        description=f"❌ **{message.author}'s message has been blocked by moderation but could not be deleted. Missing Manage Messages permission in this Channel.**",
-                        color=discord.Color.red(),
-                    )
-                )
-                return
-        await send_moderation_flagged_message(
-            guild=message.guild,
-            user=message.author,
-            flagged_str=flagged_str,
-            message=message.content,
-            url=message.jump_url,
-        )
-        if len(flagged_str) > 0:
-            await thread.send(
-                embed=discord.Embed(
-                    description=f"⚠️ **{message.author}'s message has been flagged by moderation.**",
-                    color=discord.Color.yellow(),
-                )
-            )
+        # flagged_str, blocked_str = moderate_message(
+        #     message=message.content, user=message.author
+        # )
+        # await send_moderation_blocked_message(
+        #     guild=message.guild,
+        #     user=message.author,
+        #     blocked_str=blocked_str,
+        #     message=message.content,
+        # )
+        # if len(blocked_str) > 0:
+        #     try:
+        #         await message.delete()
+        #         await thread.send(
+        #             embed=discord.Embed(
+        #                 description=f"❌ **{message.author}'s message has been deleted by moderation.**",
+        #                 color=discord.Color.red(),
+        #             )
+        #         )
+        #         return
+            # except Exception as e:
+            #     await thread.send(
+            #         embed=discord.Embed(
+            #             description=f"❌ **{message.author}'s message has been blocked by moderation but could not be deleted. Missing Manage Messages permission in this Channel.**",
+            #             color=discord.Color.red(),
+            #         )
+                # )
+                # return
+        # await send_moderation_flagged_message(
+        #     guild=message.guild,
+        #     user=message.author,
+        #     flagged_str=flagged_str,
+        #     message=message.content,
+        #     url=message.jump_url,
+        # )
+        # if len(flagged_str) > 0:
+        #     await thread.send(
+        #         embed=discord.Embed(
+        #             description=f"⚠️ **{message.author}'s message has been flagged by moderation.**",
+        #             color=discord.Color.yellow(),
+        #         )
+        #     )
 
         # wait a bit in case user has more messages
         if SECONDS_DELAY_RECEIVING_MSG > 0:
@@ -244,6 +255,11 @@ async def on_message(message: DiscordMessage):
             response_data = await generate_completion_response(
                 messages=channel_messages, user=message.author
             )
+            print(response_data)
+            if response_data.tokens != None:
+                await token_usage_changed(response_data.tokens)
+            else:
+                print("response_data.tokens!= Nones")
 
         if is_last_message_stale(
             interaction_message=message,
@@ -260,8 +276,7 @@ async def on_message(message: DiscordMessage):
     except Exception as e:
         logger.exception(e)
 
-from src.arxiv2discord.interface import ArxivInterface 
-arxiv_interface = ArxivInterface()
+
 @tasks.loop(hours=2)
 async def send_paper_summary():
     token_used = await arxiv_interface.run()
@@ -273,8 +288,27 @@ async def startpaper_command(int: discord.Interaction):
     send_paper_summary.start()
 
 async def token_usage_changed(token_used):
+    global token_usage
     token_usage += token_used
     cost = token_usage/1000*0.002
-    username = "GPT-chan [%.3f/10.0$]" %(cost)
-    await client.user.edit(nick=username)
+    name = "GPT-chan [%.3f$/10.0$]" %(cost)
+    guild = client.get_guild(ALLOWED_SERVER_IDS[0])
+    print(name,guild)
+    await guild.me.edit(nick=name)
+
+# async def get_token_count():
+#     while True:
+#         # /usage エンドポイントにGETリクエストを送信
+#         response = openai.Usage.retrieve()
+
+#         # 応答から消費トークン数を取得
+#         # tokens_used = response['data'][0]['tokens_used']
+#         total_tokens = response['data'][0]['total']
+        
+#         name = "GPT-chan [%.3f$/10.0$]" %(total_tokens)
+#         guild = client.get_guild(ALLOWED_SERVER_IDS[0])
+#         await guild.me.edit(nick=name)
+#         # 1時間待機
+#         await asyncio.sleep(3600)
+
 client.run(DISCORD_BOT_TOKEN)
