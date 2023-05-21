@@ -1,5 +1,5 @@
 from src.constants import (
-    SERVER_TO_MODERATION_CHANNEL,
+    # SERVER_TO_MODERATION_CHANNEL,
     MODERATION_VALUES_FOR_BLOCKED,
     MODERATION_VALUES_FOR_FLAGGED,
 )
@@ -35,10 +35,10 @@ async def fetch_moderation_channel(
 ) -> Optional[discord.abc.GuildChannel]:
     if not guild or not guild.id:
         return None
-    moderation_channel = SERVER_TO_MODERATION_CHANNEL.get(guild.id, None)
-    if moderation_channel:
-        channel = await guild.fetch_channel(moderation_channel)
-        return channel
+    # moderation_channel = SERVER_TO_MODERATION_CHANNEL.get(guild.id, None)
+    # if moderation_channel:
+    #     channel = await guild.fetch_channel(moderation_channel)
+    #     return channel
     return None
 
 
