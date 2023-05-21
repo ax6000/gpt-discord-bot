@@ -62,7 +62,7 @@ async def generate_completion_response(
             tmp = {"role":"user","content":i.text}
             prompt.append(tmp)
         print(prompt)
-        response = await openai.ChatCompletion.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=prompt,
             temperature=1.0,

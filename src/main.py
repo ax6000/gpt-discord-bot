@@ -64,51 +64,52 @@ async def chat_command(int: discord.Interaction, message: str):
 
         user = int.user
         logger.info(f"Chat command by {user} {message[:20]}")
-        try:
-            # moderate the message
-            flagged_str, blocked_str = moderate_message(message=message, user=user)
-            await send_moderation_blocked_message(
-                guild=int.guild,
-                user=user,
-                blocked_str=blocked_str,
-                message=message,
-            )
-            if len(blocked_str) > 0:
-                # message was blocked
-                await int.response.send_message(
-                    f"Your prompt has been blocked by moderation.\n{message}",
-                    ephemeral=True,
-                )
-                return
+        # try:
+        #     # moderate the message
+        #     flagged_str, blocked_str = moderate_message(message=message, user=user)
+        #     await send_moderation_blocked_message(
+        #         guild=int.guild,
+        #         user=user,
+        #         blocked_str=blocked_str,
+        #         message=message,
+        #     )
+        #     if len(blocked_str) > 0:
+        #         # message was blocked
+        #         await int.response.send_message(
+        #             f"Your prompt has been blocked by moderation.\n{message}",
+        #             ephemeral=True,
+        #         )
+        #         return
 
-            embed = discord.Embed(
-                description=f"<@{user.id}> wants to chat! 🤖💬",
-                color=discord.Color.green(),
-            )
-            embed.add_field(name=user.name, value=message)
+        #     embed = discord.Embed(
+        #         description=f"<@{user.id}> wants to chat! 🤖💬",
+        #         color=discord.Color.green(),
+        #     )
+        #     embed.add_field(name=user.name, value=message)
 
-            if len(flagged_str) > 0:
-                # message was flagged
-                embed.color = discord.Color.yellow()
-                embed.title = "⚠️ This prompt was flagged by moderation."
+        #     if len(flagged_str) > 0:
+        #         # message was flagged
+        #         embed.color = discord.Color.yellow()
+        #         embed.title = "⚠️ This prompt was flagged by moderation."
 
-            await int.response.send_message(embed=embed)
-            response = await int.original_response()
+        #     await int.response.send_message(embed=embed)
+    #        response = await int.original_response()
 
-            await send_moderation_flagged_message(
-                guild=int.guild,
-                user=user,
-                flagged_str=flagged_str,
-                message=message,
-                url=response.jump_url,
-            )
-        except Exception as e:
-            logger.exception(e)
-            await int.response.send_message(
-                f"Failed to start chat {str(e)}", ephemeral=True
-            )
-            return
+        #     await send_moderation_flagged_message(
+        #         guild=int.guild,
+        #         user=user,
+        #         flagged_str=flagged_str,
+        #         message=message,
+        #         url=response.jump_url,
+        #     )
+        # except Exception as e:
+        #     logger.exception(e)
+        #     await int.response.send_message(
+        #         f"Failed to start chat {str(e)}", ephemeral=True
+        #     )
+        #     return
 
+        response = await int.original_response()
         # create the thread
         thread = await response.create_thread(
             name=f"{ACTIVATE_THREAD_PREFX} {user.name[:20]} - {message[:30]}",
