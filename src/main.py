@@ -30,6 +30,7 @@ from src.moderation import (
     send_moderation_flagged_message,
 )
 
+token_usage = 0
 logging.basicConfig(
     format="[%(asctime)s] [%(filename)s:%(lineno)d] %(message)s", level=logging.INFO
 )
@@ -39,7 +40,6 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
-token_usage = 0
 
 from src.arxiv2discord.interface import ArxivInterface 
 arxiv_interface = ArxivInterface()
@@ -105,21 +105,19 @@ async def chat_command(int: discord.Interaction, message: str):
             await int.response.send_message(embed=embed)
             response = await int.original_response()
 
-            await send_moderation_flagged_message(
-                guild=int.guild,
-                user=user,
-                flagged_str=flagged_str,
-                message=message,
-                url=response.jump_url,
-            )
+            # await send_moderation_flagged_message(
+            #     guild=int.guild,
+            #     user=user,
+            #     flagged_str=flagged_str,
+            #     message=message,
+            #     url=response.jump_url,
+            # )
         except Exception as e:
             logger.exception(e)
             await int.response.send_message(
                 f"Failed to start chat {str(e)}", ephemeral=True
             )
             return
-
-        # response = await int.original_response()
         # create the thread
         thread = await response.create_thread(
             name=f"{ACTIVATE_THREAD_PREFX} {user.name[:20]} - {message[:30]}",
