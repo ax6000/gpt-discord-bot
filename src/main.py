@@ -29,7 +29,6 @@ from src.moderation import (
     send_moderation_blocked_message,
     send_moderation_flagged_message,
 )
-
 token_usage = 0
 logging.basicConfig(
     format="[%(asctime)s] [%(filename)s:%(lineno)d] %(message)s", level=logging.INFO
@@ -44,7 +43,29 @@ tree = discord.app_commands.CommandTree(client)
 from src.arxiv2discord.interface import ArxivInterface 
 arxiv_interface = ArxivInterface()
 
+from google.cloud import datastore
+data_client = datastore.Client()
+query = data_client.query()
+query.keys_only()
 
+async def access_datastore(timestamp):
+    with data_client.transaction():
+        key = data_client.key(
+            "message", timestamp.isoformat()
+        )
+        try:
+            entity = data_client.get(key)
+        except Exception as e:
+            logger.exception(e)
+            return False
+        if not entity:
+            entity = datastore.Entity(key)
+            # task.update({"description": "Example task"})
+            data_client.put(entity)
+            return True
+        else:
+            return False
+    return False
 # commands =["gunicorn","-b",":$PORT","src.dummy_server:app"]
 # subprocess.Popen(commands,shell=False)
 
@@ -63,6 +84,7 @@ async def on_ready():
 @discord.app_commands.checks.bot_has_permissions(view_channel=True)
 @discord.app_commands.checks.bot_has_permissions(manage_threads=True)
 async def chat_command(int: discord.Interaction, message: str):
+
     try:
         # only support creating thread in text channel
         if not isinstance(int.channel, discord.TextChannel):
@@ -71,63 +93,35 @@ async def chat_command(int: discord.Interaction, message: str):
         # block servers not in allow list
         if should_block(guild=int.guild):
             return
-
+        # int.response.defer()
         user = int.user
         logger.info(f"Chat command by {user} {message[:20]}")
         try:
-            # moderate the message
-            # flagged_str, blocked_str = moderate_message(message=message, user=user)
-            # await send_moderation_blocked_message(
-            #     guild=int.guild,
-            #     user=user,
-            #     blocked_str=blocked_str,
-            #     message=message,
-            # )
-            # if len(blocked_str) > 0:
-            #     # message was blocked
-            #     await int.response.send_message(
-            #         f"Your prompt has been blocked by moderation.\n{message}",
-            #         ephemeral=True,
-            #     )
-            #     return
-
             embed = discord.Embed(
                 description=f"<@{user.id}> wants to chat! 🤖💬",
                 color=discord.Color.green(),
             )
-            embed.add_field(name=user.name, value=message)
-
-            # if len(flagged_str) > 0:
-            #     # message was flagged
-            #     embed.color = discord.Color.yellow()
-            #     embed.title = "⚠️ This prompt was flagged by moderation."
+            embed.add_field(name=user.global_name, value=message)
 
             await int.response.send_message(embed=embed)
             response = await int.original_response()
 
-            # await send_moderation_flagged_message(
-            #     guild=int.guild,
-            #     user=user,
-            #     flagged_str=flagged_str,
-            #     message=message,
-            #     url=response.jump_url,
-            # )
         except Exception as e:
             logger.exception(e)
             await int.response.send_message(
-                f"Failed to start chat {str(e)}", ephemeral=True
+                f"Failed to start chat {str(e)},{int.is_expired()}", ephemeral=True
             )
             return
         # create the thread
         thread = await response.create_thread(
-            name=f"{ACTIVATE_THREAD_PREFX} {user.name[:20]} - {message[:30]}",
+            name=f"{ACTIVATE_THREAD_PREFX} {user.global_name[:20]} - {message[:30]}",
             slowmode_delay=1,
             reason="gpt-bot",
             auto_archive_duration=60,
         )
         async with thread.typing():
             # fetch completion
-            messages = [Message(user=user.name, text=message)]
+            messages = [Message(user=user.global_name, text=message)]
             response_data = await generate_completion_response(
                 messages=messages, user=user
             )
@@ -135,7 +129,7 @@ async def chat_command(int: discord.Interaction, message: str):
             if response_data.tokens != None:
                 await token_usage_changed(response_data.tokens)
             else:
-                print("response_data.tokens!= Nones")
+                print("response_data.tokens!= None")
             # send the result
             await process_response(
                 user=user, thread=thread, response_data=response_data
@@ -150,6 +144,9 @@ async def chat_command(int: discord.Interaction, message: str):
 # calls for each message
 @client.event
 async def on_message(message: DiscordMessage):
+    if not await access_datastore(message.created_at):
+        print("return: instance conflicted")
+        return
     try:
         # block servers not in allow list
         if should_block(guild=message.guild):
@@ -182,49 +179,6 @@ async def on_message(message: DiscordMessage):
             # too many messages, no longer going to reply
             await close_thread(thread=thread)
             return
-
-        # moderate the message
-        # flagged_str, blocked_str = moderate_message(
-        #     message=message.content, user=message.author
-        # )
-        # await send_moderation_blocked_message(
-        #     guild=message.guild,
-        #     user=message.author,
-        #     blocked_str=blocked_str,
-        #     message=message.content,
-        # )
-        # if len(blocked_str) > 0:
-        #     try:
-        #         await message.delete()
-        #         await thread.send(
-        #             embed=discord.Embed(
-        #                 description=f"❌ **{message.author}'s message has been deleted by moderation.**",
-        #                 color=discord.Color.red(),
-        #             )
-        #         )
-        #         return
-            # except Exception as e:
-            #     await thread.send(
-            #         embed=discord.Embed(
-            #             description=f"❌ **{message.author}'s message has been blocked by moderation but could not be deleted. Missing Manage Messages permission in this Channel.**",
-            #             color=discord.Color.red(),
-            #         )
-                # )
-                # return
-        # await send_moderation_flagged_message(
-        #     guild=message.guild,
-        #     user=message.author,
-        #     flagged_str=flagged_str,
-        #     message=message.content,
-        #     url=message.jump_url,
-        # )
-        # if len(flagged_str) > 0:
-        #     await thread.send(
-        #         embed=discord.Embed(
-        #             description=f"⚠️ **{message.author}'s message has been flagged by moderation.**",
-        #             color=discord.Color.yellow(),
-        #         )
-        #     )
 
         # wait a bit in case user has more messages
         if SECONDS_DELAY_RECEIVING_MSG > 0:
@@ -289,24 +243,8 @@ async def token_usage_changed(token_used):
     global token_usage
     token_usage += token_used
     cost = token_usage/1000*0.002
-    name = "GPT-chan [%.3f$/10.0$]" %(cost)
+    name = "GPT-chan [%.3f$/10.00$]" %(cost)
     guild = client.get_guild(ALLOWED_SERVER_IDS[0])
-    print(name,guild)
     await guild.me.edit(nick=name)
-
-# async def get_token_count():
-#     while True:
-#         # /usage エンドポイントにGETリクエストを送信
-#         response = openai.Usage.retrieve()
-
-#         # 応答から消費トークン数を取得
-#         # tokens_used = response['data'][0]['tokens_used']
-#         total_tokens = response['data'][0]['total']
-        
-#         name = "GPT-chan [%.3f$/10.0$]" %(total_tokens)
-#         guild = client.get_guild(ALLOWED_SERVER_IDS[0])
-#         await guild.me.edit(nick=name)
-#         # 1時間待機
-#         await asyncio.sleep(3600)
 
 client.run(DISCORD_BOT_TOKEN)
